@@ -1,0 +1,7 @@
+# Build output: rebuilt by scripts/build-ghostty.sh and scripts/make-workloads.sh
+*.xcframework/
+.ghostty/
+workloads/
+Keeper/keeper
+# Session recordings (script -r) hold real conversations
+*.rec

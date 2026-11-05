@@ -1,0 +1,12 @@
+{"setup":"A","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":12.384,"MBps":0.0,"mainCPU":2.737,"processCPU":3.279,"footprintMB":78,"frames":-1,"mode":"sessions","sessions":6,"note":"","run":1}
+{"setup":"B","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":13.932,"MBps":0.0,"mainCPU":0.296,"processCPU":1.968,"footprintMB":181,"frames":234,"mode":"sessions","sessions":6,"note":"","run":1}
+{"setup":"D","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":13.758,"MBps":0.0,"mainCPU":0.323,"processCPU":1.426,"footprintMB":324,"frames":-1,"mode":"sessions","sessions":6,"note":"","run":1}
+{"setup":"A","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":12.367,"MBps":0.0,"mainCPU":2.755,"processCPU":3.283,"footprintMB":78,"frames":-1,"mode":"sessions","sessions":6,"note":"","run":2}
+{"setup":"B","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":13.991,"MBps":0.0,"mainCPU":0.294,"processCPU":1.951,"footprintMB":177,"frames":224,"mode":"sessions","sessions":6,"note":"","run":2}
+{"setup":"D","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":13.691,"MBps":0.0,"mainCPU":0.316,"processCPU":1.403,"footprintMB":324,"frames":-1,"mode":"sessions","sessions":6,"note":"","run":2}
+{"setup":"A","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":12.326,"MBps":0.0,"mainCPU":2.719,"processCPU":3.246,"footprintMB":78,"frames":-1,"mode":"sessions","sessions":6,"note":"","run":3}
+{"setup":"B","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":13.975,"MBps":0.0,"mainCPU":0.358,"processCPU":1.978,"footprintMB":177,"frames":219,"mode":"sessions","sessions":6,"note":"","run":3}
+{"setup":"D","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":13.650,"MBps":0.0,"mainCPU":0.314,"processCPU":1.365,"footprintMB":323,"frames":-1,"mode":"sessions","sessions":6,"note":"","run":3}
+{"setup":"C","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":15.469,"MBps":0.0,"mainCPU":0.314,"processCPU":0.791,"footprintMB":176,"frames":216,"mode":"sessions","sessions":6,"note":"","run":1}
+{"setup":"C","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":15.585,"MBps":0.0,"mainCPU":0.329,"processCPU":0.834,"footprintMB":176,"frames":212,"mode":"sessions","sessions":6,"note":"","run":2}
+{"setup":"C","workload":"tui-burst.bin","bytes":13001,"grid":"200x60","seconds":15.182,"MBps":0.0,"mainCPU":0.304,"processCPU":0.788,"footprintMB":176,"frames":217,"mode":"sessions","sessions":6,"note":"","run":3}

@@ -1,0 +1,48 @@
+======================================================================
+TermBenchGK [93193]: 64-bit    Footprint: 193 MB (16384 bytes per page)
+======================================================================
+
+  Dirty      Clean  Reclaimable    Regions    Category
+    ---        ---          ---        ---    ---
+  93 MB        0 B          0 B         44    Owned physical footprint (unmapped) (graphics)
+  66 MB        0 B          0 B          6    IOSurface
+  14 MB        0 B          0 B         10    MALLOC_SMALL
+7808 KB        0 B      2288 KB         58    IOAccelerator (graphics)
+6144 KB        0 B      6144 KB         96    Owned physical footprint (unmapped)
+1297 KB        0 B          0 B        516    __DATA_DIRTY
+1072 KB        0 B          0 B         27    stack
+ 853 KB        0 B          0 B        553    __DATA
+ 593 KB        0 B          0 B          1    page table
+ 560 KB        0 B          0 B          9    MALLOC metadata
+ 336 KB        0 B          0 B          1    MALLOC_TINY
+ 308 KB        0 B          0 B       1497    unused dyld shared cache area
+ 304 KB        0 B          0 B         21    untagged (VM_ALLOCATE)
+ 272 KB        0 B          0 B          2    CoreUI image data
+ 220 KB        0 B          0 B        323    __AUTH
+ 139 KB     112 KB          0 B        603    __DATA_CONST
+ 128 KB        0 B          0 B          1    Accelerate image backing stores
+ 112 KB        0 B       400 KB          4    app-specific tag 1
+ 112 KB        0 B          0 B        600    __AUTH_CONST
+  64 KB        0 B          0 B          2    IOAccelerator
+  64 KB        0 B          0 B          4    CoreAnimation
+  64 KB        0 B          0 B          4    IOKit
+  64 KB        0 B          0 B          2    __TPRO_CONST
+  48 KB        0 B          0 B          3    CoreGraphics
+  32 KB        0 B          0 B          1    Activity Tracing
+  32 KB        0 B          0 B          2    ColorSync
+  16 KB        0 B          0 B          1    MALLOC_NANO
+  16 KB        0 B          0 B          1    tag 22
+  16 KB        0 B          0 B          1    os_alloc_once
+  16 KB        0 B          0 B          1    Foundation
+    0 B      11 MB          0 B         25    mapped file
+    0 B    6160 KB          0 B        622    __TEXT
+    0 B     176 KB          0 B          5    __LINKEDIT
+    0 B        0 B          0 B          1    __FONT_DATA
+    0 B        0 B          0 B          1    __CTF
+    ---        ---          ---        ---    ---
+ 193 MB      17 MB      8832 KB       5050    TOTAL
+
+Auxiliary data:
+    phys_footprint: 193 MB
+    phys_footprint_peak: 202 MB
+
