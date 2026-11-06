@@ -216,3 +216,29 @@ on the API.
 vsync is an optional 4 ms, not the condition of the design, and its risks (section 3) no longer
 need settling before a decision. Earlier sections' latency numbers stand as window-clock
 measurements, comparable with each other but not with the display.
+
+## 9. 24 sessions behind the keeper (`../2026-11-05-scaling/`, `scripts/scaling-keeper.sh`)
+
+Every session behind its own keeper (relay, marked ′), one shown, 200×60, macOS 27.2, 3 runs
+interleaved. "Burst" is the 11-03 scaling load (`tui-burst.bin` looped, ~260 KB/s per session,
+~12 s); "real" is the recording at real pace for 60 s. CPU s process (main), the harness's
+footprint MB, and the keepers' summed RSS sampled near the end (the same keeper for every setup):
+
+| | Burst, 1 | Burst, 6 | Burst, 24 | Real, 24, 60 s | Footprint at 24 (burst / real) |
+|---|---|---|---|---|---|
+| A′ SwiftTerm | 1.84 (1.73) | 2.87 (2.42) | 4.77 (3.69) | 9.60 (8.17) | 88 / 241 MB |
+| C′ libghostty-vt + Alloy | 0.44 (0.24) | 0.64 (0.23) | 0.79 (0.16) | 1.81 (0.74) | 178 / 201 MB |
+| D′ full libghostty | 0.75 (0.33) | 1.12 (0.26) | 1.60 (0.18) | 4.42 (1.71) | 763 / 742 MB |
+
+Keepers: 8 MB for one, 48 MB for six, 190 MB for 24 (burst) and 205 MB (real), about 8 MB each.
+
+- **The 11-03 scaling result holds behind the keeper.** From 1 to 24 sessions C′'s CPU grows
+  1.8×, D′'s 2.1× and A′'s 2.6×; at 24, C′ uses half of D′'s CPU and a quarter of its memory
+  (11-03 without the keeper: C 1.04–1.10 s, D 1.86–1.89 s, 178 against 738–761 MB).
+- **On real output at 24 sessions, C′ uses 19% of SwiftTerm's CPU and 41% of full libghostty's.**
+  SwiftTerm's main thread is busy 14% of the time with 24 idle-ish Claude sessions.
+- **Side's whole cost at 24 sessions** is the app plus the keepers: about 405 MB for C′ against
+  about 950 MB for D′ (real output, footprint plus keeper RSS; the two are measured differently,
+  so treat the sum as approximate).
+- Two runs (6 sessions, C′ and D′, run 2) printed no result; the medians at 6 use the other two
+  runs. Six reruns of exactly those cases were all clean; the cause isn't known.
