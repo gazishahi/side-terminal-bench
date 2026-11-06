@@ -162,3 +162,14 @@ keeper); C's and D's moved by under 3 ms. Why is not established.
   SwiftTerm's, and the least memory.
 - Presenting without vsync is therefore the condition of the whole design, and its safety
   (section 3) is now the deciding open question.
+
+**Reproduced from a clean clone of the public repo** (github.com/gazishahi/side-terminal-bench at
+d136d8e, empty Zig cache, `SOURCE` = Alloy's public sources), without the keeper, same recording,
+same Mac, the same evening. Ghostty built in 4 minutes; every workload but `ascii` was byte-identical
+to ours. Results, median of 3 runs:
+- **Six sessions at real pace, 60 s:** A 7.00 s CPU (6.12 main), C 1.26 s (0.70), D 3.12 s (1.85);
+  226 / 182 / 323 MB. The same order and nearly the same ratios as behind the keeper.
+- **Latency, real keys, idle:** A 8.0, C 18.6, C without vsync 3.5, D 20.8 ms. With five
+  replaying: 8.0 / 18.0 / 4.3 / 20.6. C with vsync is about 3 ms slower here than behind the
+  keeper (15.8); the conclusion doesn't change.
+- `summarize-validation.py` didn't read replay results; it does now (full.jsonl and sessions.jsonl).
