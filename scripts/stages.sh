@@ -5,14 +5,18 @@
 #   C-renderthread  draws on a thread of its own
 #   D               full libghostty with vsync (its default)
 #   D-novsync       full libghostty with window-vsync = false
+#   C-iosurface, C-iosurface-renderthread
+#                   frames handed to a plain layer as IOSurface contents, as Ghostty does
+# VARIANTS picks a subset (default: all six).
 # The display clock needs Screen Recording permission for the app this runs in (a terminal
 # session inside Side doesn't get Side's; Terminal.app works).
 set -uo pipefail
 here=${HERE:-${0:A:h}/..}; T=$here/TermBench/.build/release
 R=$here/results/validation/${VALIDATION_DATE:-$(date +%F)}-stages; mkdir -p $R; out=$R/latency.jsonl; : > $out
-for run in 1 2 3; do for v in C C-renderthread D D-novsync; do
+variants=(${=VARIANTS:-C C-renderthread C-iosurface C-iosurface-renderthread D D-novsync})
+for run in 1 2 3; do for v in $variants; do
   e=""; g=""; b=TermBenchGV; s=C
-  [[ $v == C-renderthread ]] && e=renderthread
+  case $v in C-renderthread) e=renderthread;; C-iosurface) e=iosurface;; C-iosurface-renderthread) e=iosurface,renderthread;; esac
   [[ $v == D* ]] && { b=TermBenchGK; s=D; }
   [[ $v == D-novsync ]] && g="window-vsync = false"
   la=$(sysctl -n vm.loadavg | awk '{print $2}')

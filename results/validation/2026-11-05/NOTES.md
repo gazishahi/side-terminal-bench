@@ -315,11 +315,36 @@ plus the main-thread hop later. C draws when output arrives, so the echo's frame
 - **Turning Ghostty's vsync off** removes most of it: the echo's frame goes at 4.5 ms and the
   display at 16.9 ms, 2.4 ms behind C. Ghostty documents that setting as its latency knob.
 - **From handoff to display**, C's Metal present took 13.4 ms and D's IOSurface handoff 10.0 ms
-  (12.4 without vsync). Both wait for the compositor; that C waits longer here suggests its
-  present path has about 3 ms to give back, not yet tested.
+  (12.4 without vsync). That looked like 3 ms for C to win back; section 12 tested it, and it
+  isn't there.
 - What makes D draw the first frame (the key itself, or something it changes) isn't established;
   `keyCallback` queues renders on some paths.
 
 So the lead is a scheduling difference, not rendering speed: C draws when the echo arrives, D on
 the display link's next tick. It's a design choice Ghostty could make differently, which makes it
 a fair point to raise with its author rather than a claim that its renderer is slow.
+
+## 12. Ghostty's frame handoff, tried in C (`../2026-11-06-stages/`, `scripts/stages.sh`)
+
+`TERMBENCH_EXP=iosurface` hands C's frames over as Ghostty does: rendered into one of three
+IOSurfaces, then set as a plain layer's contents on the main thread once the GPU is done (top-left
+gravity, no implicit animation), instead of presenting a CAMetalLayer drawable. Same stage run as
+section 11, 3 runs, median ms from the key:
+
+| | Handoff | On the display | Handoff to display |
+|---|---|---|---|
+| C, Metal present, main thread | 1.1 | 15.0 | 13.9 |
+| C, Metal present, render thread | 1.1 | 14.3 | 13.2 |
+| C, IOSurface, main thread | 2.6 | 15.6 | 13.0 |
+| C, IOSurface, render thread | 2.6 | 15.1 | 12.6 |
+| D full libghostty | 13.1 | 23.4 | 10.3 |
+| D, `window-vsync = false` | 4.4 | 16.0 | 11.6 |
+
+**No gain: on the display the IOSurface handoff is the same or up to 0.8 ms slower.** Section 11
+compared handoff points that don't mean the same thing. C's "present" is marked when the command
+buffer is committed, before the GPU has drawn; an IOSurface handoff comes after the GPU is done
+and a main-thread hop, so it's later by construction, and the time after it is shorter. D's
+shorter handoff-to-display also has a reason of its own: it draws on display-link ticks, so its
+handoffs land at a fixed point in the refresh, while C's land wherever the echo does and wait,
+on average, part of a refresh longer. The way the frame is handed over isn't where any of the
+latency is; when the frame is drawn is.

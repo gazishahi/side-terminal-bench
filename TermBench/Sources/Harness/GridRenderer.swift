@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import IOSurface
 import Metal
 import QuartzCore
 import Synchronization
@@ -95,7 +96,16 @@ public final class GridView: NSView {
         queue = device.makeCommandQueue()!
         atlas = GlyphAtlas(device: device)
         wantsLayer = true
-        layer = metal
+        if Self.useIOSurface {
+            // iosurface: frames go to a plain layer as IOSurface contents, set on the main thread
+            // once the GPU is done, as Ghostty's IOSurfaceLayer does, instead of a CAMetalLayer's
+            // drawables. Top-left gravity, and no implicit animation of the contents.
+            surfaceLayer.contentsGravity = .topLeft
+            surfaceLayer.actions = ["contents": NSNull()]
+            layer = surfaceLayer
+        } else {
+            layer = metal
+        }
         metal.device = device
         metal.pixelFormat = .bgra8Unorm
         metal.framebufferOnly = true
@@ -141,6 +151,10 @@ public final class GridView: NSView {
         metal.contentsScale = window.backingScaleFactor
         scale = window.backingScaleFactor
         metal.drawableSize = CGSize(width: bounds.width * window.backingScaleFactor, height: bounds.height * window.backingScaleFactor)
+        if Self.useIOSurface {
+            surfaceLayer.contentsScale = window.backingScaleFactor
+            makeSurfaces(width: Int(metal.drawableSize.width), height: Int(metal.drawableSize.height))
+        }
         if Self.experiments.contains("metaldl") {
             // metaldl: vsync kept, but frames are drawn when CAMetalDisplayLink hands out a
             // drawable timed for an upcoming refresh, preferredFrameLatency frames ahead
@@ -159,6 +173,24 @@ public final class GridView: NSView {
         link = displayLink(target: self, selector: #selector(tick))
         link?.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         link?.add(to: .main, forMode: .common)
+    }
+
+    nonisolated static let useIOSurface = experiments.contains("iosurface")
+    private nonisolated let surfaceLayer = CALayer()
+    /// The iosurface swap chain: three IOSurfaces, each with a Metal texture over it.
+    private nonisolated(unsafe) var surfaces: [(IOSurface, MTLTexture)] = []
+    private nonisolated(unsafe) var surfaceIndex = 0
+
+    private func makeSurfaces(width: Int, height: Int) {
+        surfaces = (0..<3).compactMap { _ in
+            guard let surface = IOSurface(properties: [.width: width, .height: height, .bytesPerElement: 4,
+                                                       .pixelFormat: kCVPixelFormatType_32BGRA]) else { return nil }
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+            d.usage = [.renderTarget]
+            d.storageMode = .shared
+            guard let texture = device.makeTexture(descriptor: d, iosurface: unsafeBitCast(surface, to: IOSurfaceRef.self), plane: 0) else { return nil }
+            return (surface, texture)
+        }
     }
 
     private var metalLink: CAMetalDisplayLink?
@@ -267,6 +299,17 @@ public final class GridView: NSView {
 
     private nonisolated func render() {
         let quads = assemble(scale: scale)
+        if Self.useIOSurface {
+            guard !surfaces.isEmpty else { return }
+            surfaceIndex = (surfaceIndex + 1) % surfaces.count
+            let (surface, texture) = surfaces[surfaceIndex]
+            let layer = surfaceLayer
+            encode(quads, into: texture, drawable: nil, then: {
+                DispatchQueue.main.async { layer.contents = surface }
+            })
+            frames += 1
+            return
+        }
         guard let drawable = metal.nextDrawable() else { return }
         encode(quads, into: drawable.texture, drawable: drawable)
         frames += 1
@@ -321,7 +364,7 @@ public final class GridView: NSView {
     private nonisolated(unsafe) var lastQuads: [Quad] = []
 
     @discardableResult
-    private nonisolated func encode(_ quads: [Quad], into target: MTLTexture, drawable: CAMetalDrawable?, wait: Bool = false) -> MTLCommandBuffer? {
+    private nonisolated func encode(_ quads: [Quad], into target: MTLTexture, drawable: CAMetalDrawable?, wait: Bool = false, then completed: (@Sendable () -> Void)? = nil) -> MTLCommandBuffer? {
         lastQuads = quads
         inFlight.wait()
         let pass = MTLRenderPassDescriptor()
@@ -351,6 +394,7 @@ public final class GridView: NSView {
         }
         encoder.endEncoding()
         if let drawable, !Self.withTransaction { buffer.present(drawable) }
+        if let completed { buffer.addCompletedHandler { _ in completed() } }
         buffer.commit()
         if drawable != nil { Stages.mark("present") }
         if let drawable, Self.withTransaction { buffer.waitUntilScheduled(); drawable.present() }
