@@ -1,0 +1,28 @@
+diff --git a/src/Surface.zig b/src/Surface.zig
+index 7f7b1df88..cd939a7f6 100644
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -2975,7 +2975,8 @@ pub fn keyCallback(
+ 
+         if (self.config.scroll_to_bottom.keystroke) self.io.terminal.scrollViewport(.bottom);
+ 
+-        try self.queueRender();
++        // TERMBENCH PATCH: no render on the keypress itself; the echo's output renders.
++        // try self.queueRender();
+     }
+ 
+     return .consumed;
+diff --git a/src/termio/Thread.zig b/src/termio/Thread.zig
+index 79cdf8936..0bd4d07d6 100644
+--- a/src/termio/Thread.zig
++++ b/src/termio/Thread.zig
+@@ -307,7 +307,8 @@ fn drainMailbox(
+     var redraw: bool = false;
+     while (mailbox.pop(global.io())) |message| {
+         // If we have a message we always redraw
+-        redraw = true;
++        // TERMBENCH PATCH: no redraw for a drained message; output that follows renders.
++        redraw = redraw; // TERMBENCH PATCH: was `redraw = true`
+ 
+         log.debug("mailbox message={s}", .{@tagName(message)});
+         switch (message) {

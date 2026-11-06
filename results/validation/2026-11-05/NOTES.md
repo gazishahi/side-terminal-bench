@@ -348,3 +348,36 @@ shorter handoff-to-display also has a reason of its own: it draws on display-lin
 handoffs land at a fixed point in the refresh, while C's land wherever the echo does and wait,
 on average, part of a refresh longer. The way the frame is handed over isn't where any of the
 latency is; when the frame is drawn is.
+
+## 13. What draws full libghostty's frame before the echo (`../2026-11-06-ghostty-redraw/`, `scripts/ghostty-redraw.sh`)
+
+Two places in Ghostty ask for a render as soon as a key is pressed, before its echo is back:
+- `Surface.zig`, end of `keyCallback`: every non-modifier keypress that sends bytes clears the
+  selection, scrolls to the bottom and calls `queueRender()`.
+- `termio/Thread.zig`, `drainMailbox`: the IO thread wakes the renderer after draining any
+  message ("If we have a message we always redraw"), and the key's write is a message.
+
+With vsync, the render thread draws that state on the next display-link tick, without the echo;
+the echo's state then waits for the tick after. To test it, `patches/ghostty-no-redraw-before-echo.diff`
+drops the two renders in a copy of the pinned Ghostty (the stock build is untouched). Stage profile,
+display clock, real keys, idle, 3 runs, median ms:
+
+| Full libghostty | Frames per key | Echo's frame handed off | On the display |
+|---|---|---|---|
+| Stock, vsync | 2 | 13.8–13.9 | 23.6–26.2 (two batches) |
+| Keypress render dropped only | 2 | 14.0 | 23.7 |
+| Both dropped, vsync | 1 | 3.5 | 16.6 |
+| Stock, `window-vsync = false` | 2 | 4.4–4.5 | 16.7–17.1 |
+| Both dropped, `window-vsync = false` | 1 | 3.5 | 16.2 |
+
+- **Dropping both removes the extra frame and 7–10 ms**; with vsync, Ghostty then matches its own
+  no-vsync latency. Dropping only the keypress's render changes nothing, so the IO thread's
+  redraw is enough on its own to cause it. Whether the keypress's render alone would also
+  cause it wasn't tested.
+- **The patch is a diagnostic, not a fix.** Those renders are there for reasons: clearing a
+  selection or scrolling to the bottom must show even when nothing echoes (a password prompt),
+  and other mailbox messages change what's drawn. A real fix would keep them but stop a render
+  that changes nothing visible from taking the display link's tick ahead of the output that's
+  about to arrive.
+- With the extra frame gone, Ghostty with vsync (16.6 ms) is within about 2 ms of C (14.3–15.0).
+  What remains of C's lead is small, and it isn't explained yet.
