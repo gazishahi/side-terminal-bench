@@ -133,7 +133,7 @@ public final class GridView: NSView {
     /// the text input system first (interpretKeyEvents, as an NSTextInputClient), as SwiftTerm's
     /// view and Ghostty.app's do, since that's the path a real terminal view's keys take (IME).
     public var onKey: ((String) -> Void)?
-    public override func keyDown(with event: NSEvent) { interpretKeyEvents([event]) }
+    public override func keyDown(with event: NSEvent) { Stages.mark("keyDown"); interpretKeyEvents([event]) }
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -352,6 +352,7 @@ public final class GridView: NSView {
         encoder.endEncoding()
         if let drawable, !Self.withTransaction { buffer.present(drawable) }
         buffer.commit()
+        if drawable != nil { Stages.mark("present") }
         if let drawable, Self.withTransaction { buffer.waitUntilScheduled(); drawable.present() }
         if wait { buffer.waitUntilCompleted() }
         return buffer

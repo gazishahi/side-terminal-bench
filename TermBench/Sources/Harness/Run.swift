@@ -530,6 +530,7 @@ public enum Latency {
         let scale = window.backingScaleFactor
         MainProbe.start()
         MainBusy.start()
+        Stages.hookLayerContents()
         DispatchQueue.global(qos: .userInteractive).async {
             var results: [Double] = []
             var timeouts = 0
@@ -541,7 +542,7 @@ public enum Latency {
                 let before = display?.mark() ?? pixels(rect, window: id)
                 let sent = DispatchSemaphore(value: 0)
                 var t0 = 0.0
-                DispatchQueue.main.async { MainActor.assumeIsolated { t0 = Metrics.now(); send(); sent.signal() } }
+                DispatchQueue.main.async { MainActor.assumeIsolated { t0 = Metrics.now(); Stages.arm(t0); send(); sent.signal() } }
                 sent.wait()
                 var seen = false
                 while Metrics.now() - t0 < 0.5 {
@@ -551,6 +552,7 @@ public enum Latency {
                     usleep(250)
                 }
                 if !seen { timeouts += 1 }
+                Stages.close(shownAt: seen ? results.last : nil)
                 usleep(UInt32.random(in: 30_000...70_000))
             }
             display?.stop()
@@ -560,7 +562,7 @@ public enum Latency {
                 MainActor.assumeIsolated {
                     let o = Run.shared.options
                     print(String(format: "{\"setup\":\"%@\",\"mode\":\"latency\",\"clock\":\"%@\",\"input\":\"%@\",\"exp\":\"%@\",\"load\":%d,\"grid\":\"%dx%d\",\"keys\":%d,\"timeouts\":%d,\"minMs\":%.2f,\"medianMs\":%.2f,\"p95Ms\":%.2f,\"maxMs\":%.2f%@}",
-                                 o.setup, displayClock ? "display" : "window", realKeys ? "events" : "direct", ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "", o.load, o.cols, o.rows, results.count, timeouts, pick(0), pick(0.5), pick(0.95), results.last ?? -1, MainProbe.fields()))
+                                 o.setup, displayClock ? "display" : "window", realKeys ? "events" : "direct", ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "", o.load, o.cols, o.rows, results.count, timeouts, pick(0), pick(0.5), pick(0.95), results.last ?? -1, MainProbe.fields() + Stages.fields()))
                     fflush(stdout)
                     exit(0)
                 }

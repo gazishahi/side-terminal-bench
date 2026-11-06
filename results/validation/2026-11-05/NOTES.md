@@ -287,3 +287,39 @@ process CPU in six sessions was about the same (3.5 s).
 **So:** the engine must draw on its own thread, and Alloy must support that before it can render
 the terminal. The latency lead over D doesn't come from drawing on the main thread; where D's
 extra ~10 ms goes is still unexplained until D is profiled.
+
+## 11. Where full libghostty's extra latency goes (`../2026-11-05-stages/`, `scripts/stages.sh`)
+
+`TERMBENCH_STAGES=1` timestamps each key's path in-process (SIP rules out system tracing): when
+the view got the key, when the key was sent, and every frame handoff to Core Animation (C's
+Metal present; for D, an IOSurface set as a layer's contents, caught by hooking
+`-[CALayer setContents:]`). The display clock gives the frame on the display; the frame shown is
+the last handoff before it. Real keys, idle, macOS 27.2 at 120 Hz, 3 runs; ms from the key,
+median:
+
+| | Key sent | First handoff | Handoff of the shown frame | On the display |
+|---|---|---|---|---|
+| C, main thread | 0.6 | 1.1 | 1.1 (1 frame) | 14.5 |
+| C, render thread | 0.6 | 1.1 | 1.1 (1 frame) | 14.5 |
+| D full libghostty | 0.5 | 3.2 | 13.8 (2 frames) | 23.8 |
+| D, `window-vsync = false` | 0.5 | 3.2 | 4.5 (2 frames) | 16.9 |
+
+**D draws a frame without the echo first, and the echo waits for the next display-link tick.**
+With vsync, Ghostty's render thread updates its cells as soon as it's woken but draws only when
+the display link fires (`renderer/Thread.zig`, `drawFrame`: with vsync it draws only "when we're
+forced to via `now`"). Each key here produced two frames: one at 3.2 ms that didn't change the
+echo cell (the display clock didn't see it), and the echo's at 13.8 ms, about one 120 Hz refresh
+plus the main-thread hop later. C draws when output arrives, so the echo's frame is handed off at
+1.1 ms. That accounts for about 10 of D's extra ms.
+
+- **Turning Ghostty's vsync off** removes most of it: the echo's frame goes at 4.5 ms and the
+  display at 16.9 ms, 2.4 ms behind C. Ghostty documents that setting as its latency knob.
+- **From handoff to display**, C's Metal present took 13.4 ms and D's IOSurface handoff 10.0 ms
+  (12.4 without vsync). Both wait for the compositor; that C waits longer here suggests its
+  present path has about 3 ms to give back, not yet tested.
+- What makes D draw the first frame (the key itself, or something it changes) isn't established;
+  `keyCallback` queues renders on some paths.
+
+So the lead is a scheduling difference, not rendering speed: C draws when the echo arrives, D on
+the display link's next tick. It's a design choice Ghostty could make differently, which makes it
+a fair point to raise with its author rather than a claim that its renderer is slow.

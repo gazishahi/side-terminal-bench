@@ -181,6 +181,7 @@ final class SetupC {
             view.onKey = { text in
                 let bytes = Array(text.utf8)
                 _ = bytes.withUnsafeBytes { write(pty.master, $0.baseAddress, $0.count) }
+                Stages.mark("keySent")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [view] in
                 let row = Latency.echoRow(view: view, cellSize: cell)
@@ -188,7 +189,7 @@ final class SetupC {
             }
         }
         let view = self.view
-        pty.startReading(consume: { source.feed($0); view.requestFrame() }, done: {
+        pty.startReading(consume: { Stages.mark("echoRead"); source.feed($0); view.requestFrame() }, done: {
             var status: Int32 = 0
             waitpid(pty.pid, &status, 0)
             DispatchQueue.main.async {

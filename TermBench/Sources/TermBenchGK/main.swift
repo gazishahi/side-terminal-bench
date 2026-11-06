@@ -20,6 +20,7 @@ final class SurfaceHost: NSView {
     private var typed: String?
     override func keyDown(with event: NSEvent) {
         guard let surface else { return }
+        Stages.mark("keyDown")
         typed = nil
         interpretKeyEvents([event])
         let text = typed ?? ""
@@ -33,6 +34,7 @@ final class SurfaceHost: NSView {
             key.unshifted_codepoint = (event.charactersIgnoringModifiers ?? "").unicodeScalars.first.map { $0.value } ?? 0
             key.composing = false
             _ = ghostty_surface_key(surface, key)
+            Stages.mark("keySent")
         }
     }
 }
@@ -79,7 +81,7 @@ func startD(options: Options, view: SurfaceHost) {
     var runtime = ghostty_runtime_config_s(
         userdata: nil,
         supports_selection_clipboard: false,
-        wakeup_cb: { _ in DispatchQueue.main.async { MainActor.assumeIsolated { if let app { ghostty_app_tick(app) } } } },
+        wakeup_cb: { _ in Stages.mark("wakeup"); DispatchQueue.main.async { MainActor.assumeIsolated { if let app { ghostty_app_tick(app) } } } },
         action_cb: { _, _, action in
             if action.tag == GHOSTTY_ACTION_SHOW_CHILD_EXITED {
                 DispatchQueue.main.async { MainActor.assumeIsolated { checkExited() } }
