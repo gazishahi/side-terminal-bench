@@ -144,6 +144,8 @@ public final class Run {
         start = Metrics.now()
         mainStart = Metrics.mainThreadCPU()
         cpuStart = Metrics.processCPU()
+        MainProbe.start()
+        MainBusy.start()
         // A setup that never finishes still reports.
         DispatchQueue.main.asyncAfter(deadline: .now() + 300) { [weak self] in self?.finish(note: "timeout") }
     }
@@ -172,7 +174,7 @@ public final class Run {
         {"setup":"\(options.setup)","workload":"\((options.workload as NSString).lastPathComponent)","bytes":\(size),"grid":"\(grid)",\
         "seconds":\(String(format: "%.3f", wall)),"MBps":\(String(format: "%.1f", Double(size) / wall / 1_048_576)),\
         "mainCPU":\(String(format: "%.3f", m.main)),"processCPU":\(String(format: "%.3f", m.cpu)),\
-        "footprintMB":\(String(format: "%.0f", m.footprint)),"frames":\(frames),"mode":"\(options.mode)","sessions":\(options.sessions),"note":"\(note)"}
+        "footprintMB":\(String(format: "%.0f", m.footprint)),"frames":\(frames),"mode":"\(options.mode)","sessions":\(options.sessions),"note":"\(note)"\(MainProbe.fields())}
         """
         print(json)
         fflush(stdout)
@@ -526,6 +528,8 @@ public enum Latency {
             print("window", wrect, "row", cell(0))
         }
         let scale = window.backingScaleFactor
+        MainProbe.start()
+        MainBusy.start()
         DispatchQueue.global(qos: .userInteractive).async {
             var results: [Double] = []
             var timeouts = 0
@@ -555,8 +559,8 @@ public enum Latency {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     let o = Run.shared.options
-                    print(String(format: "{\"setup\":\"%@\",\"mode\":\"latency\",\"clock\":\"%@\",\"input\":\"%@\",\"exp\":\"%@\",\"load\":%d,\"grid\":\"%dx%d\",\"keys\":%d,\"timeouts\":%d,\"minMs\":%.2f,\"medianMs\":%.2f,\"p95Ms\":%.2f,\"maxMs\":%.2f}",
-                                 o.setup, displayClock ? "display" : "window", realKeys ? "events" : "direct", ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "", o.load, o.cols, o.rows, results.count, timeouts, pick(0), pick(0.5), pick(0.95), results.last ?? -1))
+                    print(String(format: "{\"setup\":\"%@\",\"mode\":\"latency\",\"clock\":\"%@\",\"input\":\"%@\",\"exp\":\"%@\",\"load\":%d,\"grid\":\"%dx%d\",\"keys\":%d,\"timeouts\":%d,\"minMs\":%.2f,\"medianMs\":%.2f,\"p95Ms\":%.2f,\"maxMs\":%.2f%@}",
+                                 o.setup, displayClock ? "display" : "window", realKeys ? "events" : "direct", ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "", o.load, o.cols, o.rows, results.count, timeouts, pick(0), pick(0.5), pick(0.95), results.last ?? -1, MainProbe.fields()))
                     fflush(stdout)
                     exit(0)
                 }

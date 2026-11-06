@@ -15,7 +15,8 @@ struct AtlasEntry {
 /// (white) for ordinary glyphs, which the shader tints, and full color for emoji. Keyed by font,
 /// glyph, screen scale and a quarter-pixel horizontal position, so text sits where CoreText put
 /// it rather than snapped to whole pixels.
-@MainActor
+// Alloy's atlas is @MainActor. The harness drops that so the render-thread experiment
+// (TERMBENCH_EXP=renderthread) can use it; one thread at a time uses it either way.
 final class GlyphAtlas {
     private(set) var texture: MTLTexture
     private(set) var size: Int

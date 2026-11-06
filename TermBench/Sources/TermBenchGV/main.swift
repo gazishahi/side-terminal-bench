@@ -217,10 +217,14 @@ final class SessionsC {
     }
     func start(options: Options) {
         var ptys: [PTYProcess] = []
-        for source in sources {
+        // The shown session draws on the display link's ticks; with renderthread there's no link,
+        // so its output asks the render thread for a frame instead.
+        let view = view, onRenderThread = GridView.experiments.contains("renderthread")
+        for (i, source) in sources.enumerated() {
             let pty = PTYProcess(command: options.command, cols: options.cols, rows: options.rows)
             ptys.append(pty)
-            pty.startReading(consume: { source.feed($0) }, done: {
+            let shown = i == 0 && onRenderThread
+            pty.startReading(consume: { source.feed($0); if shown { view.requestFrame() } }, done: {
                 var status: Int32 = 0
                 waitpid(pty.pid, &status, 0)
                 DispatchQueue.main.async { MainActor.assumeIsolated {

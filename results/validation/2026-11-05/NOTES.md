@@ -242,3 +242,48 @@ Keepers: 8 MB for one, 48 MB for six, 190 MB for 24 (burst) and 205 MB (real), a
   so treat the sum as approximate).
 - Two runs (6 sessions, C′ and D′, run 2) printed no result; the medians at 6 use the other two
   runs. Six reruns of exactly those cases were all clean; the cause isn't known.
+
+## 10. Where Ghostty's design should win (`../2026-11-05-robustness/`, `scripts/robustness.sh`)
+
+Three tests of what Ghostty's architecture buys, macOS 27.2, no keeper, 3 runs interleaved.
+`C-renderthread` (`TERMBENCH_EXP=renderthread`) draws on a thread of its own, as Ghostty does,
+instead of the main thread; its final frames match C's pixel for pixel. The harness's copy of
+Alloy's glyph atlas drops `@MainActor` for it: Alloy itself can't render off the main thread yet.
+`TERMBENCH_PROBE=1` measures how long a no-op handed to the main queue every 2 ms waits to run.
+
+**1. A busy main thread** (`TERMBENCH_MAIN_BUSY`: the main thread kept busy 5 or 10 ms, 60 times a
+second, standing in for the app's UI). Latency, display clock, real keys, idle, median ms (p95):
+
+| | Not busy | 5 ms busy | 10 ms busy |
+|---|---|---|---|
+| A SwiftTerm | 16.9 (22.8) | 14.9 (16.7) | 17.0 (27.1) |
+| C, main thread | 15.0 (18.4) | 11.6 (17.2) | 12.9 (16.3) |
+| C, render thread | 14.2 (18.4) | 11.4 (17.2) | 13.1 (15.8) |
+| D full libghostty | 23.8 (33.8) | 26.5 (32.0) | 23.0 (36.1) |
+
+No setup got materially slower, and the order held. Busy work every frame may also keep the CPU's
+clocks up, which would explain the faster busy runs; this load is periodic and gentle, and a
+burstier one could tell a different story.
+
+**2. Main-thread stalls while output streams** (main-queue wait, ms, median of runs):
+
+| | tui p50 / p99 / max | scroll max | 6 sessions at 10× (max) | Main CPU, sessions |
+|---|---|---|---|---|
+| A SwiftTerm | 1.2 / 9.0 / 42.5 | 16.1 | 26.6 | 5.50 s |
+| C, main thread | 13.6 / 46.3 / 46.3 | 17.3 | 14.4 | 1.06 s |
+| C, render thread | 0.01 / 0.2 / 0.2 | 0.2 | 0.6 | 0.31 s |
+| D full libghostty | 0.01 / 0.13 / 0.13 | 0.2 | 0.5 | 1.07 s |
+
+**Drawing on the main thread is a real flaw.** Under bulk output C's main thread waited a median
+13.6 ms and up to 46 ms (most likely in `nextDrawable`, waiting for one of two drawables; not yet profiled), which would
+freeze Side's whole UI. On its own thread, like D, the longest wait was 0.2 ms in bulk and 0.6 ms
+across six sessions. (The first sessions run of `C-renderthread` drew no frames, since sessions
+mode drew only on the display-link tick; those rows were replaced after the fix.)
+
+**3. Does the latency lead survive a render thread?** Yes: 14.2 ms against C's 15.0 and D's 23.8
+(test 1, not busy). Throughput also rose (tui 171 against 147 MB/s, scroll 121 against 106), and
+process CPU in six sessions was about the same (3.5 s).
+
+**So:** the engine must draw on its own thread, and Alloy must support that before it can render
+the terminal. The latency lead over D doesn't come from drawing on the main thread; where D's
+extra ~10 ms goes is still unexplained until D is profiled.

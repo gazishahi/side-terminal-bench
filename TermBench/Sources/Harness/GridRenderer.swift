@@ -5,7 +5,7 @@ import QuartzCore
 import Synchronization
 
 // The Alloy terminal renderer prototype for setups B and C: Alloy's glyph atlas and quad shaders
-// (vendored unchanged from Alloy's AlloyRender, github.com/gazishahi/alloy), with a cell grid in place of
+// (vendored from Alloy's AlloyRender, github.com/gazishahi/alloy, the atlas minus @MainActor), with a cell grid in place of
 // document layout. Backgrounds, glyphs, underlines and the cursor are instanced quads in one
 // draw call; a row's quads are rebuilt only when that row changed.
 
@@ -49,9 +49,9 @@ struct Quad {
 
 @MainActor
 public final class GridView: NSView {
-    public let grid: Grid
-    public weak var source: GridSource?
-    public private(set) var frames = 0
+    public nonisolated let grid: Grid
+    public nonisolated(unsafe) weak var source: GridSource?
+    public nonisolated(unsafe) private(set) var frames = 0
     public static func cellSize(fontName: String, fontSize: CGFloat) -> CGSize {
         let font = CTFontCreateWithName(fontName as CFString, fontSize, nil)
         var glyph: CGGlyph = 0; var m: UniChar = 77 // "M"
@@ -61,26 +61,29 @@ public final class GridView: NSView {
         return CGSize(width: advance.width, height: ceil(CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)))
     }
 
-    private let font: CTFont, boldFont: CTFont
-    private let cell: CGSize
-    private let ascent: CGFloat
-    private let device = MTLCreateSystemDefaultDevice()!
-    private lazy var queue = device.makeCommandQueue()!
-    private var pipeline: MTLRenderPipelineState!
-    private var sampler: MTLSamplerState!
-    private lazy var atlas = GlyphAtlas(device: device)
-    private let metal = CAMetalLayer()
-    private var bgQuads: [[Quad]] = []
-    private var glyphQuads: [[Quad]] = []
-    private var ring: [MTLBuffer] = []
-    private var ringIndex = 0
-    private let inFlight = DispatchSemaphore(value: 3)
-    private var atlasGeneration = 0
+    // Render state: touched only by whichever thread renders (the main thread, or the render
+    // thread with TERMBENCH_EXP=renderthread), never both.
+    private nonisolated let font: CTFont, boldFont: CTFont
+    private nonisolated let cell: CGSize
+    private nonisolated let ascent: CGFloat
+    private nonisolated let device = MTLCreateSystemDefaultDevice()!
+    private nonisolated(unsafe) var queue: MTLCommandQueue!
+    private nonisolated(unsafe) var pipeline: MTLRenderPipelineState!
+    private nonisolated(unsafe) var sampler: MTLSamplerState!
+    private nonisolated(unsafe) var atlas: GlyphAtlas!
+    private nonisolated let metal = CAMetalLayer()
+    private nonisolated(unsafe) var scale: CGFloat = 2
+    private nonisolated(unsafe) var bgQuads: [[Quad]] = []
+    private nonisolated(unsafe) var glyphQuads: [[Quad]] = []
+    private nonisolated(unsafe) var ring: [MTLBuffer] = []
+    private nonisolated(unsafe) var ringIndex = 0
+    private nonisolated let inFlight = DispatchSemaphore(value: 3)
+    private nonisolated(unsafe) var atlasGeneration = 0
     private var link: CADisplayLink?
 
     private struct GlyphKey: Hashable { let scalar: UInt32; let cluster: String?; let bold: Bool }
     private struct Placed { let entry: AtlasEntry; let dx: CGFloat }
-    private var glyphCache: [GlyphKey: [Placed]] = [:]
+    private nonisolated(unsafe) var glyphCache: [GlyphKey: [Placed]] = [:]
 
     public init(cols: Int, rows: Int, fontName: String, fontSize: CGFloat, frame: NSRect) {
         grid = Grid(cols: cols, rows: rows)
@@ -89,6 +92,8 @@ public final class GridView: NSView {
         cell = Self.cellSize(fontName: fontName, fontSize: fontSize)
         ascent = CTFontGetAscent(font)
         super.init(frame: frame)
+        queue = device.makeCommandQueue()!
+        atlas = GlyphAtlas(device: device)
         wantsLayer = true
         layer = metal
         metal.device = device
@@ -134,6 +139,7 @@ public final class GridView: NSView {
         super.viewDidMoveToWindow()
         guard let window else { return }
         metal.contentsScale = window.backingScaleFactor
+        scale = window.backingScaleFactor
         metal.drawableSize = CGSize(width: bounds.width * window.backingScaleFactor, height: bounds.height * window.backingScaleFactor)
         if Self.experiments.contains("metaldl") {
             // metaldl: vsync kept, but frames are drawn when CAMetalDisplayLink hands out a
@@ -149,6 +155,7 @@ public final class GridView: NSView {
             metalLink = dl
             return
         }
+        if Self.experiments.contains("renderthread") { return } // requestFrame drives the render thread
         link = displayLink(target: self, selector: #selector(tick))
         link?.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         link?.add(to: .main, forMode: .common)
@@ -159,34 +166,40 @@ public final class GridView: NSView {
 
     fileprivate func metalLinkUpdate(_ drawable: CAMetalDrawable) {
         guard let source, source.snapshot(into: grid) else { return }
-        _ = encode(assemble(scale: metal.contentsScale), into: drawable.texture, drawable: drawable)
+        _ = encode(assemble(scale: scale), into: drawable.texture, drawable: drawable)
         frames += 1
     }
 
     /// Output arrived: draw now rather than at the next display-link tick (which added up to a
     /// refresh interval of latency). Callable from any thread; coalesced to one pending frame.
-    static let withTransaction = ProcessInfo.processInfo.environment["TERMBENCH_TXN"] == "1"
-    nonisolated static let experiments = Set((ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "").split(separator: ",").map(String.init))
+    nonisolated static let withTransaction = ProcessInfo.processInfo.environment["TERMBENCH_TXN"] == "1"
+    public nonisolated static let experiments = Set((ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "").split(separator: ",").map(String.init))
 
     public nonisolated func requestFrame() {
         if Self.experiments.contains("metaldl") { return } // the display link draws
         guard !framePending.exchange(true, ordering: .acquiringAndReleasing) else { return }
+        if Self.experiments.contains("renderthread") {
+            // renderthread: draw on a thread of our own, as Ghostty does, instead of the main thread.
+            renderQueue.async { self.framePending.store(false, ordering: .releasing); self.tick() }
+            return
+        }
         DispatchQueue.main.async { MainActor.assumeIsolated { self.framePending.store(false, ordering: .releasing); self.tick() } }
     }
     private nonisolated let framePending = Atomic<Bool>(false)
+    private nonisolated let renderQueue = DispatchQueue(label: "termbench.render", qos: .userInteractive)
 
-    @objc private func tick() {
+    @objc private nonisolated func tick() {
         guard let source else { return }
         if source.snapshot(into: grid) { render() }
     }
 
-    private func color(_ rgb: UInt32) -> SIMD4<Float> {
+    private nonisolated func color(_ rgb: UInt32) -> SIMD4<Float> {
         SIMD4(Float((rgb >> 16) & 0xFF) / 255, Float((rgb >> 8) & 0xFF) / 255, Float(rgb & 0xFF) / 255, 1)
     }
 
     /// The glyphs for one cell's text, cached: a font fallback and a shaping pass for anything
     /// the base font lacks or that is more than one scalar.
-    private func placed(_ c: Cell, scale: CGFloat) -> [Placed] {
+    private nonisolated func placed(_ c: Cell, scale: CGFloat) -> [Placed] {
         let bold = c.flags & Cell.bold != 0
         let key = GlyphKey(scalar: c.scalar, cluster: c.cluster, bold: bold)
         if let known = glyphCache[key] { return known }
@@ -218,7 +231,7 @@ public final class GridView: NSView {
         return result
     }
 
-    private func rebuild(row y: Int, scale: CGFloat) {
+    private nonisolated func rebuild(row y: Int, scale: CGFloat) {
         var bgs: [Quad] = [], glyphs: [Quad] = []
         let cw = Float(cell.width * scale), ch = Float((cell.height * scale).rounded())
         let top = Float(y) * ch
@@ -252,8 +265,8 @@ public final class GridView: NSView {
         glyphQuads[y] = glyphs
     }
 
-    private func render() {
-        let quads = assemble(scale: metal.contentsScale)
+    private nonisolated func render() {
+        let quads = assemble(scale: scale)
         guard let drawable = metal.nextDrawable() else { return }
         encode(quads, into: drawable.texture, drawable: drawable)
         frames += 1
@@ -276,9 +289,9 @@ public final class GridView: NSView {
         let gpu = buffer.map { ($0.gpuEndTime - $0.gpuStartTime) * 1000 } ?? -1
         return (cpu, gpu, quads.count)
     }
-    private var offscreen: MTLTexture?
+    private nonisolated(unsafe) var offscreen: MTLTexture?
 
-    private func assemble(scale: CGFloat) -> [Quad] {
+    private nonisolated func assemble(scale: CGFloat) -> [Quad] {
         if atlas.generation != atlasGeneration {
             atlasGeneration = atlas.generation
             glyphCache.removeAll()
@@ -305,10 +318,10 @@ public final class GridView: NSView {
         return quads
     }
 
-    private var lastQuads: [Quad] = []
+    private nonisolated(unsafe) var lastQuads: [Quad] = []
 
     @discardableResult
-    private func encode(_ quads: [Quad], into target: MTLTexture, drawable: CAMetalDrawable?, wait: Bool = false) -> MTLCommandBuffer? {
+    private nonisolated func encode(_ quads: [Quad], into target: MTLTexture, drawable: CAMetalDrawable?, wait: Bool = false) -> MTLCommandBuffer? {
         lastQuads = quads
         inFlight.wait()
         let pass = MTLRenderPassDescriptor()
@@ -346,7 +359,12 @@ public final class GridView: NSView {
 
     /// The current frame, drawn again into a readable texture and written as a PNG.
     public func writeShot(to path: String) {
-        lastQuads = assemble(scale: metal.contentsScale)
+        if Self.experiments.contains("renderthread") { renderQueue.sync { self.writeShotNow(to: path) }; return }
+        writeShotNow(to: path)
+    }
+
+    private nonisolated func writeShotNow(to path: String) {
+        lastQuads = assemble(scale: scale)
         let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: Int(metal.drawableSize.width), height: Int(metal.drawableSize.height), mipmapped: false)
         d.usage = [.renderTarget, .shaderRead]
         d.storageMode = .shared
