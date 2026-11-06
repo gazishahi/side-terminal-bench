@@ -39,16 +39,16 @@ def latency_table(latency, name):
     if latency:
         print(name)
         print("Keypress latency, ms (median of runs; each run's median in brackets)")
-        print("| Setup | Keys | Experiment | Load | Median | p95 | Runs | Load avg |")
-        print("|---|---|---|---|---|---|---|---|")
+        print("| Setup | Keys | Clock | Experiment | Load | Median | p95 | Runs | Load avg |")
+        print("|---|---|---|---|---|---|---|---|---|")
         groups = defaultdict(list)
         for r in latency:
-            groups[(r.get("relay", ""), r["setup"], r.get("input", "direct"), r.get("exp", ""), r["load"])].append(r)
-        for (relay, setup, keys, exp, load), rs in sorted(groups.items()):
+            groups[(r.get("relay", ""), r["setup"], r.get("input", "direct"), r.get("clock", "window"), r.get("exp", ""), r["load"])].append(r)
+        for (relay, setup, keys, clock, exp, load), rs in sorted(groups.items()):
             meds = [r["medianMs"] for r in rs]
             p95s = [r["p95Ms"] for r in rs]
             loads = [r.get("loadavg", 0) for r in rs]
-            print(f"| {setup}{relay} | {keys} | {exp or '-'} | {load} | {statistics.median(meds):.1f} | {statistics.median(p95s):.1f} | "
+            print(f"| {setup}{relay} | {keys} | {clock} | {exp or '-'} | {load} | {statistics.median(meds):.1f} | {statistics.median(p95s):.1f} | "
                   f"{', '.join(f'{m:.1f}' for m in meds)} | {max(loads):.1f} |")
         print()
 

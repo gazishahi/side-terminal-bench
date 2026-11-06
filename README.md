@@ -34,7 +34,7 @@ scripts/run-all.sh               # about 30 minutes; SETUPS="B C" scripts/run-al
 
 The `ascii` workload is plain text made from the Swift sources in `SOURCE` (also needed by `run-all.sh`). Our results used Side's own sources, which aren't public, so your `ascii` bytes differ from ours. The other five workloads are generated and identical for everyone.
 
-Windows open and close on screen while it runs. Leave them uncovered, because Ghostty stops drawing a surface that's hidden. Keypress latency captures the harness's own windows, which needs no Screen Recording permission.
+Windows open and close on screen while it runs. Leave them uncovered, because Ghostty stops drawing a surface that's hidden. Keypress latency has two clocks. By default it captures the harness's own window, which needs no Screen Recording permission but can't see the window server's composite, so it under-counts by an amount that differs by setup. `TERMBENCH_CLOCK=display` stops at the composited display frame instead (ScreenCaptureKit), which needs Screen Recording permission for the app you run it from; `scripts/latency-clock.sh` runs both. Use the display clock for any claim about what a person sees.
 
 One run by hand:
 

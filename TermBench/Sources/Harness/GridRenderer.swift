@@ -135,17 +135,41 @@ public final class GridView: NSView {
         guard let window else { return }
         metal.contentsScale = window.backingScaleFactor
         metal.drawableSize = CGSize(width: bounds.width * window.backingScaleFactor, height: bounds.height * window.backingScaleFactor)
+        if Self.experiments.contains("metaldl") {
+            // metaldl: vsync kept, but frames are drawn when CAMetalDisplayLink hands out a
+            // drawable timed for an upcoming refresh, preferredFrameLatency frames ahead
+            // (TERMBENCH_FRAME_LATENCY, default 1, the least it allows), instead of presenting
+            // whenever output arrives and waiting for the refresh after that.
+            let dl = CAMetalDisplayLink(metalLayer: metal)
+            dl.preferredFrameLatency = Float(ProcessInfo.processInfo.environment["TERMBENCH_FRAME_LATENCY"] ?? "") ?? 1
+            dl.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+            metalLinkProxy.view = self
+            dl.delegate = metalLinkProxy
+            dl.add(to: .main, forMode: .common)
+            metalLink = dl
+            return
+        }
         link = displayLink(target: self, selector: #selector(tick))
         link?.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         link?.add(to: .main, forMode: .common)
     }
 
+    private var metalLink: CAMetalDisplayLink?
+    private let metalLinkProxy = MetalLinkProxy()
+
+    fileprivate func metalLinkUpdate(_ drawable: CAMetalDrawable) {
+        guard let source, source.snapshot(into: grid) else { return }
+        _ = encode(assemble(scale: metal.contentsScale), into: drawable.texture, drawable: drawable)
+        frames += 1
+    }
+
     /// Output arrived: draw now rather than at the next display-link tick (which added up to a
     /// refresh interval of latency). Callable from any thread; coalesced to one pending frame.
     static let withTransaction = ProcessInfo.processInfo.environment["TERMBENCH_TXN"] == "1"
-    static let experiments = Set((ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "").split(separator: ",").map(String.init))
+    nonisolated static let experiments = Set((ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "").split(separator: ",").map(String.init))
 
     public nonisolated func requestFrame() {
+        if Self.experiments.contains("metaldl") { return } // the display link draws
         guard !framePending.exchange(true, ordering: .acquiringAndReleasing) else { return }
         DispatchQueue.main.async { MainActor.assumeIsolated { self.framePending.store(false, ordering: .releasing); self.tick() } }
     }
@@ -394,4 +418,13 @@ extension GridView: @preconcurrency NSTextInputClient {
     public func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
     public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect { window?.convertToScreen(convert(bounds, to: nil)) ?? .zero }
     public func characterIndex(for point: NSPoint) -> Int { 0 }
+}
+
+/// CAMetalDisplayLink's delegate, on the main run loop it was added to.
+private final class MetalLinkProxy: NSObject, CAMetalDisplayLinkDelegate {
+    weak var view: GridView?
+    func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
+        let drawable = update.drawable
+        MainActor.assumeIsolated { view?.metalLinkUpdate(drawable) }
+    }
 }

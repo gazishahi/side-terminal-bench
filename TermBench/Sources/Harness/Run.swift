@@ -496,6 +496,8 @@ public enum Latency {
     /// the setup's own key handling. Otherwise `send` hands the key to the setup directly, which
     /// skips that path and isn't the same path in every setup (setups A to D first used that).
     public static let realKeys = ProcessInfo.processInfo.environment["TERMBENCH_KEYS"] == "events"
+    /// TERMBENCH_CLOCK=display: stop the clock at the composited display frame (DisplayClock).
+    public static let displayClock = ProcessInfo.processInfo.environment["TERMBENCH_CLOCK"] == "display"
 
     @MainActor
     static func postKey(window: NSWindow) {
@@ -523,31 +525,38 @@ public enum Latency {
             }
             print("window", wrect, "row", cell(0))
         }
+        let scale = window.backingScaleFactor
         DispatchQueue.global(qos: .userInteractive).async {
             var results: [Double] = []
             var timeouts = 0
+            let display = displayClock ? DisplayClock.start(rect: cell(0).insetBy(dx: 1, dy: 1), scale: scale) : nil
+            if displayClock, display == nil { print("{\"note\":\"display clock unavailable (Screen Recording permission?)\"}"); fflush(stdout); exit(1) }
+            usleep(300_000)
             for i in 0..<keys {
                 let rect = cell(i).insetBy(dx: 1, dy: 1)
-                let before = pixels(rect, window: id)
+                let before = display?.mark() ?? pixels(rect, window: id)
                 let sent = DispatchSemaphore(value: 0)
                 var t0 = 0.0
                 DispatchQueue.main.async { MainActor.assumeIsolated { t0 = Metrics.now(); send(); sent.signal() } }
                 sent.wait()
                 var seen = false
                 while Metrics.now() - t0 < 0.5 {
-                    if differs(pixels(rect, window: id), before) { results.append((Metrics.now() - t0) * 1000); seen = true; break }
+                    if let display {
+                        if let shown = display.firstChange(from: before, differs: differs) { results.append((shown - t0) * 1000); seen = true; break }
+                    } else if differs(pixels(rect, window: id), before) { results.append((Metrics.now() - t0) * 1000); seen = true; break }
                     usleep(250)
                 }
                 if !seen { timeouts += 1 }
                 usleep(UInt32.random(in: 30_000...70_000))
             }
+            display?.stop()
             results.sort()
             let pick = { (q: Double) in results.isEmpty ? -1 : results[min(results.count - 1, Int(Double(results.count) * q))] }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     let o = Run.shared.options
-                    print(String(format: "{\"setup\":\"%@\",\"mode\":\"latency\",\"input\":\"%@\",\"exp\":\"%@\",\"load\":%d,\"grid\":\"%dx%d\",\"keys\":%d,\"timeouts\":%d,\"minMs\":%.2f,\"medianMs\":%.2f,\"p95Ms\":%.2f,\"maxMs\":%.2f}",
-                                 o.setup, realKeys ? "events" : "direct", ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "", o.load, o.cols, o.rows, results.count, timeouts, pick(0), pick(0.5), pick(0.95), results.last ?? -1))
+                    print(String(format: "{\"setup\":\"%@\",\"mode\":\"latency\",\"clock\":\"%@\",\"input\":\"%@\",\"exp\":\"%@\",\"load\":%d,\"grid\":\"%dx%d\",\"keys\":%d,\"timeouts\":%d,\"minMs\":%.2f,\"medianMs\":%.2f,\"p95Ms\":%.2f,\"maxMs\":%.2f}",
+                                 o.setup, displayClock ? "display" : "window", realKeys ? "events" : "direct", ProcessInfo.processInfo.environment["TERMBENCH_EXP"] ?? "", o.load, o.cols, o.rows, results.count, timeouts, pick(0), pick(0.5), pick(0.95), results.last ?? -1))
                     fflush(stdout)
                     exit(0)
                 }

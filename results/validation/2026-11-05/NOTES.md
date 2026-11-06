@@ -173,3 +173,46 @@ to ours. Results, median of 3 runs:
   replaying: 8.0 / 18.0 / 4.3 / 20.6. C with vsync is about 3 ms slower here than behind the
   keeper (15.8); the conclusion doesn't change.
 - `summarize-validation.py` didn't read replay results; it does now (full.jsonl and sessions.jsonl).
+
+## 8. Latency on the display, not the window (`../2026-11-05-clock/`, `scripts/latency-clock.sh`)
+
+**Every latency number above used a clock that can't see the screen.** The harness stopped the
+clock when `CGWindowListCreateImage`, capturing the window alone, first showed the key's glyph.
+That capture returns the window's newest contents whenever it's asked; it doesn't wait for the
+window server to composite them into a display frame. So it under-counts any setup whose content
+reaches the window server before the next composite, and the under-count differs by setup.
+
+**The display clock** (`TERMBENCH_CLOCK=display`, `DisplayClock.swift`) uses ScreenCaptureKit on
+the display and stops at the display time of the first composited frame (SCStreamFrameInfo
+`displayTime`) that shows the glyph. Scan-out and the panel come after it and are the same for
+every setup. It needs Screen Recording permission, which a terminal inside Side doesn't get (the
+keeper copy is the responsible process), so these ran from Terminal.app.
+
+Both clocks, interleaved, macOS 27.2, built-in XDR display at 120 Hz, no keeper, real keys, five
+hidden sessions replaying the recording at real pace for "loaded"; ms, median of 3 runs (p95):
+
+| | Window, idle | Display, idle | Window, loaded | Display, loaded |
+|---|---|---|---|---|
+| A SwiftTerm | 7.7 (13.0) | 16.4 (20.4) | 8.2 (15.2) | 16.6 (24.2) |
+| C, vsync | 16.9 (21.6) | 14.5 (18.5) | 17.4 (20.6) | 14.3 (18.5) |
+| C, `displaySyncEnabled = false` | 4.2 (8.4) | 10.2 (21.7) | 4.0 (8.6) | 11.0 (22.4) |
+| D full libghostty | 21.3 (27.2) | 24.7 (34.0) | 21.9 (26.5) | 23.4 (34.4) |
+
+- **On the display, C with vsync is ahead of SwiftTerm** by about 2 ms, idle and loaded. The
+  window clock had SwiftTerm 9 ms ahead: its CoreText view's content is visible to a window
+  capture about 9 ms before it's on the display.
+- **Presenting without vsync gains about 4 ms on the display, not 12.** Its frame still waits for
+  the next composite; its p95 is no better than with vsync.
+- **C's lead over D holds on both clocks** (10 ms on the display).
+- The window clock read C with vsync about 2 ms *later* than the display did; the capture loop's
+  own cost (a capture every 0.25 ms) is the likely cause. It doesn't change any order.
+
+**`CAMetalDisplayLink`** (`TERMBENCH_EXP=metaldl`, keeping vsync and drawing into the link's
+drawable with `preferredFrameLatency` 1 or 2) measured 38 ms on the display, idle and loaded.
+That's a first, untuned implementation (it draws only on the link's callbacks), not a verdict
+on the API.
+
+**So the Phase 0 latency gate is met with vsync**, on the display clock. Presenting without
+vsync is an optional 4 ms, not the condition of the design, and its risks (section 3) no longer
+need settling before a decision. Earlier sections' latency numbers stand as window-clock
+measurements, comparable with each other but not with the display.
